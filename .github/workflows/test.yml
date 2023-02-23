@@ -15,9 +15,9 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     - name: Update packages
-      run: apt update
+      run: sudo apt update
     - name: Install NBD
-      run: apt install nbd-server
+      run: sudo apt install nbd-server
     - name: Set up Python
       uses: actions/setup-python@v2
     - name: Install dependencies
