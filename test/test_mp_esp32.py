@@ -3,14 +3,12 @@ from textwrap import dedent
 import socket
 import sys
 
-from mpremote.pyboard import Pyboard
+import pytest
 
 from test_cp_linux import nbd_server
-# these are not used
-from unbd import Client
-from pytest import raises
 
 
+pytestmark = pytest.mark.metal
 board = None
 test_host = socket.gethostbyname(socket.gethostname())
 
@@ -23,6 +21,7 @@ def pipe(out, err, err_msg):
 
 
 def setup_module(module, imports=("from unbd import Client", )):
+    from mpremote.pyboard import Pyboard
     module.board = Pyboard("/dev/ttyUSB0")
     module.board.enter_raw_repl()
 
@@ -35,7 +34,6 @@ def setup_module(module, imports=("from unbd import Client", )):
         station.active(True)
         station.disconnect()
         station.connect(wlan_login, wlan_pass)
-        sleep(1)
         t = time() + 10
         while time() < t:
             if station.isconnected():
@@ -61,11 +59,15 @@ def setup_module(module, imports=("from unbd import Client", )):
     raises_src = dedent(getsource(raises))
 
     print("Set up mc ...")
-    pipe(*module.board.exec_raw(wifi_connect_src), "error while compiling 'wifi_connect'")
-    pipe(*module.board.exec_raw("wifi_connect()"), "error while executing wifi_connect()")
-    pipe(*module.board.exec_raw(raises_src), "error while compiling 'raises'")
-    for i in imports:
-        pipe(*module.board.exec_raw(i), f"error while importing '{i}'")
+    try:
+        pipe(*module.board.exec_raw(wifi_connect_src), "error while compiling 'wifi_connect'")
+        pipe(*module.board.exec_raw("wifi_connect()"), "error while executing wifi_connect()")
+        pipe(*module.board.exec_raw(raises_src), "error while compiling 'raises'")
+        for i in imports:
+            pipe(*module.board.exec_raw(i), f"error while importing '{i}'")
+    except:
+        teardown_module(module)
+        raise
 
 
 def teardown_module(module):
