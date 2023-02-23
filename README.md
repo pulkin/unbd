@@ -1,3 +1,6 @@
+[![build](https://github.com/pulkin/unbd/actions/workflows/test.yml/badge.svg)](https://github.com/pulkin/unbd/actions)
+[![pypi](https://img.shields.io/pypi/v/unbd)](https://pypi.org/project/unbd/)
+
 unbd
 ====
 
