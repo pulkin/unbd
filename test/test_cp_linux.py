@@ -16,6 +16,8 @@ def nbd_server(port, data, delay=0.01):
         f.write(data)
         f.flush()
         f.seek(0)
+        print(">>> ", f.name)
+        print(subprocess.check_output(["ls", "-al", "/tmp"]))
         p = subprocess.Popen([*nbd_server_cmd.split(), str(port), f.name, "-d"], stdout=sys.stdout, stderr=sys.stderr)
         try:
             sleep(delay)
