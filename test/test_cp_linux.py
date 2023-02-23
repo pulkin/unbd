@@ -5,6 +5,7 @@ from tempfile import NamedTemporaryFile
 from time import sleep
 
 import pytest
+from conftest import nbd_server_cmd
 
 from unbd import Client
 
@@ -15,7 +16,7 @@ def nbd_server(port, data, delay=0.01):
         f.write(data)
         f.flush()
         f.seek(0)
-        p = subprocess.Popen(["nbd-server", str(port), f.name, "-d"], stdout=sys.stdout, stderr=sys.stderr)
+        p = subprocess.Popen([*nbd_server_cmd.split(), str(port), f.name, "-d"], stdout=sys.stdout, stderr=sys.stderr)
         try:
             sleep(delay)
             yield p, f
