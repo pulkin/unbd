@@ -18,8 +18,6 @@ def nbd_server(port, data, delay=0.01):
         f.flush()
         f.seek(0)
         os.chmod(f.name, 0o666)  # in case nbd-server runs as a different user
-        print(">>> ", f.name)
-        print(subprocess.check_output(["ls", "-al", "/tmp"], text=True))
         p = subprocess.Popen([*nbd_server_cmd.split(), str(port), f.name, "-d"], stdout=sys.stdout, stderr=sys.stderr)
         try:
             sleep(delay)
