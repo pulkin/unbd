@@ -20,28 +20,36 @@ def pipe(out, err, err_msg):
         raise RuntimeError(f"MCU: {err_msg}")
 
 
-def setup_module(module, imports=("from unbd import Client", )):
+def setup_module(module, imports=("from unbd import Client, BlockClient, connect", )):
     from mpremote.pyboard import Pyboard
     module.board = Pyboard("/dev/ttyUSB0")
     module.board.enter_raw_repl()
 
     def wifi_connect():
         from credentials import wlan_login, wlan_pass
-        from network import WLAN, STA_IF
+        import network
+        from network import WLAN, STA_IF, AP_IF
         from time import sleep, time
 
-        station = WLAN(STA_IF)
-        station.active(True)
-        station.disconnect()
-        station.connect(wlan_login, wlan_pass)
-        t = time() + 10
+        WLAN(AP_IF).active(False)
+        nic = WLAN(STA_IF)
+        nic.active(False)
+        nic.active(True)
+        nic.connect(wlan_login, wlan_pass)
+
+        t = time() + 30
         while time() < t:
-            if station.isconnected():
+            if nic.isconnected():
                 break
             sleep(0.1)
         else:
-            raise RuntimeError("still not connected after timeout")
-        print(station.ifconfig())
+            status = nic.status()
+            for i in dir(network):
+                if i.startswith("STAT_") and getattr(network, i) == status:
+                    status = i
+                    break
+            raise RuntimeError(f"still not connected after timeout; status={status}")
+        print(nic.ifconfig())
     wifi_connect_src = dedent(getsource(wifi_connect))
 
     class raises:
@@ -77,53 +85,99 @@ def teardown_module(module):
 def _strip_decorators(source_code, until):
     source_code = source_code.split("\n")
     for i, line in enumerate(source_code):
-        if line == until:
+        if line.startswith(until):
             break
     else:
         raise ValueError(f"decorator {until} not found")
     return "\n".join(source_code[i + 1:])
 
 
-def runs_on_metal(func):
-    sig = signature(func)
-    source_code = _strip_decorators(dedent(getsource(func)), "@runs_on_metal")
-    f_name = func.__name__
+def fat_image(files, size=1024):
+    from pyfatfs.PyFat import PyFat
+    import fs
+    import tempfile
 
-    def _result(port=sig.parameters["port"].default, data=sig.parameters["data"].default):
-        with nbd_server(port, data) as args:
-            pipe(*board.exec_raw(source_code), f"error while compiling '{f_name}'")
-            pipe(*board.exec_raw(f"{f_name}(host={repr(test_host)})"),
-                 f"error while running '{f_name}' host={test_host}")
+    with tempfile.NamedTemporaryFile("rb+") as f:
+        image = PyFat()
+        image.mkfs(f.name, 12, size * 1024, label="NO NAME", number_of_fats=1)
+        image._mark_clean()
+        f.flush()
+        f.seek(0)
 
-    return _result
+        with fs.open_fs(f"fat://{f.name}", writeable=True) as image:
+            for name, contents in files.items():
+                with image.open(name, "w") as image_f:
+                    image_f.write(contents)
+        return f.read()
 
 
-@runs_on_metal
-def test_read(host, port=33567, data=b"Hello world"):
+def runs_on_metal(port=33567, data=b"Hello world"):
+    def _wrapper(func):
+        sig = signature(func)
+        source_code = _strip_decorators(dedent(getsource(func)), "@runs_on_metal")
+        f_name = func.__name__
+
+        def _result():
+            with nbd_server(port, data):
+                pipe(*board.exec_raw(source_code), f"error while compiling '{f_name}'")
+                args = {
+                    "host": repr(test_host),
+                    "port": repr(port),
+                    "data": repr(data),
+                }
+                args = {k: v for k, v in args.items() if k in sig.parameters}
+                args = ', '.join(f"{k}={v}" for k, v in args.items())
+                call_as = f"{f_name}({args})"
+                pipe(*board.exec_raw(call_as), f"error while running {call_as}")
+
+        return _result
+    return _wrapper
+
+
+@runs_on_metal()
+def test_read(host, port, data):
     with Client(host, port) as c:
         assert c.size == len(data)
         assert c.read(1, 3) == data[1:4]
         assert c.read(0, len(data)) == data
 
 
-@runs_on_metal
-def test_read_out_of_bounds(host, port=33567, data=b"Hello world"):
+@runs_on_metal()
+def test_read_out_of_bounds(host, port, data):
     with Client(host, port) as c:
         with raises(RuntimeError):
             c.read(10, 1024)
         assert c.read(10, 1) == data[10:11]
 
 
-@runs_on_metal
-def test_write(host, port=33567, data=b"Hello world"):
+@runs_on_metal()
+def test_write(host, port, data):
     with Client(host, port) as c:
         c.write(0, b"hola ")
         assert c.read(0, len(data)) == b"hola  world"
 
 
-@runs_on_metal
-def test_write_out_of_bounds(host, port=33567, data=b"Hello world"):
+@runs_on_metal()
+def test_write_out_of_bounds(host, port, data):
     with Client(host, port) as c:
         with raises(RuntimeError):
             c.write(10, b"xxx")
         assert c.read(0, len(data)) == data
+
+
+@runs_on_metal(data=fat_image({"/hello.txt": "Hello world"}))
+def test_mount(host, port):
+    import os
+    os.mount(connect(host, port, 512), "/mount")
+    with open("/mount/hello.txt", 'r') as f:
+        assert f.read() == "Hello world"
+
+
+@runs_on_metal(data=fat_image({"hello.txt": ""}))
+def test_mount_rw(host, port):
+    import os
+    os.mount(connect(host, port, 512), "/mount")
+    with open("/mount/hello.txt", 'w') as f:
+        f.write("Hello world")
+    with open("/mount/hello.txt", 'r') as f:
+        assert f.read() == "Hello world"
