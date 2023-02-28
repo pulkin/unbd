@@ -169,15 +169,21 @@ def test_write_out_of_bounds(host, port, data):
 def test_mount(host, port):
     import os
     os.mount(connect(host, port, 512), "/mount")
-    with open("/mount/hello.txt", 'r') as f:
-        assert f.read() == "Hello world"
+    try:
+        with open("/mount/hello.txt", 'r') as f:
+            assert f.read() == "Hello world"
+    finally:
+        os.umount("/mount")
 
 
-@runs_on_metal(data=fat_image({"hello.txt": ""}))
+@runs_on_metal(data=fat_image({}))
 def test_mount_rw(host, port):
     import os
     os.mount(connect(host, port, 512), "/mount")
-    with open("/mount/hello.txt", 'w') as f:
-        f.write("Hello world")
-    with open("/mount/hello.txt", 'r') as f:
-        assert f.read() == "Hello world"
+    try:
+        with open("/mount/hello.txt", 'w') as f:
+            f.write("Hello world")
+        with open("/mount/hello.txt", 'r') as f:
+            assert f.read() == "Hello world"
+    finally:
+        os.umount("/mount")
