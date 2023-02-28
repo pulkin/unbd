@@ -12,7 +12,7 @@ from unbd import Client
 
 
 @contextmanager
-def nbd_server(port, data, delay=0.01):
+def nbd_server(port, data, delay=0.1):
     with NamedTemporaryFile("wb+") as f:
         f.write(data)
         f.flush()
