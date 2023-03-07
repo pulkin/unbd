@@ -22,18 +22,32 @@ How to use
 Install `nbd` on your Linux machine and start the server
 
 ```shell
-nbd-server 33567 fs.img -d
+nbd-server 33567 /full/path/to/fs.img -d
 ```
 
 Install `unbd` on your micropython device and mount the remote device
 
 ```python
 from unbd import connect
-import uos
-uos.mount(connect('192.168.0.123', 33567), "/mount_point")
+import os
+os.mount(connect('192.168.0.123', 33567, open=True), "/mount_point")
 ```
 
 `fs.img` located on the Linux machine contains FAT image.
+
+Performance
+-----------
+
+The mounted filesystem speeds range from several Kbps to tens
+of Kbps in read and write. The final throughput is roughly the
+ratio `block_size / network_latency`. Thus, to achieve maximal
+performance make sure that `block_size` is large (4096 is a
+good value to maximize performance) and the connection is stable.
+Example `littlefs` mount looks like the following:
+
+```python
+os.mount(os.VfsLfs2(connect(host, port, block_size=4096), readsize=4096), "/mount")
+```
 
 License
 -------
