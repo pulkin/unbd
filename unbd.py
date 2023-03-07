@@ -10,17 +10,26 @@ def _rq_message(t, offset, length, _work=bytearray(b"\x25\x60\x95\x13" + b"\x00"
 
 
 class Client:
-    def __init__(self, host, port, name=b""):
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.settimeout(10)
-        s.connect((host, port))
-        s.settimeout(None)
+    def __init__(self, host, port, name=b"", init=True, timeout=3):
+        self.host = host
+        self.port = port
+        self.name = name
+        self.socket_timeout = timeout
+
+        if init:
+            self.open()
+
+    def open(self):
+        self._socket = s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.settimeout(self.socket_timeout)
+        s.connect((self.host, self.port))
         f = s.makefile('br')
         self._readinto, self._write = f.readinto, s.sendall
-        self._hello()
-        self.size = self.select_export(name)
 
-    def _hello(self):
+        self.hello()
+        self.size = self.select_export(self.name)
+
+    def hello(self):
         buf = bytearray(18)
         if self._readinto(buf) != 18 or buf != b'NBDMAGICIHAVEOPT\x00\x03':
             raise RuntimeError(f"unexpected hello: {buf}")
@@ -63,13 +72,18 @@ class Client:
 
     def close(self):
         self._write(_rq_message(2, 0, 0))
-        self._readinto = self._write = None
+        self._socket.close()
+        self._socket = self._readinto = self._write = None
 
     def __enter__(self):
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        self.close()
+        try:
+            self.close()
+        except:
+            pass
+        return False
 
 
 class BlockClient:
@@ -77,18 +91,24 @@ class BlockClient:
         self.client = client
         self.block_size = block_size
 
-    def readblocks(self, block_num, buf):
-        self.client.readinto(self.block_size * block_num, buf)
+    def readblocks(self, block_num, buf, offset=0):
+        self.client.readinto(self.block_size * block_num + offset, buf)
 
-    def writeblocks(self, block_num, buf):
-        self.client.write(self.block_size * block_num, buf)
+    def writeblocks(self, block_num, buf, offset=0):
+        self.client.write(self.block_size * block_num + offset, buf)
 
     def ioctl(self, op, arg):
+        if op == 1:
+            self.client.open()
+        elif op == 2:
+            self.client.close()
         if op == 4:
             return self.client.size // self.block_size
         elif op == 5:
             return self.block_size
+        elif op == 6:
+            return 0
 
 
-def connect(host, port, block_size=512, name=b""):
-    return BlockClient(Client(host, port, name), block_size)
+def connect(host, port, block_size=512, name=b"", init=False):
+    return BlockClient(Client(host, port, name, init=init), block_size)
