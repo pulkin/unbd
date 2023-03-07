@@ -10,13 +10,15 @@ def _rq_message(t, offset, length, _work=bytearray(b"\x25\x60\x95\x13" + b"\x00"
 
 
 class Client:
-    def __init__(self, host, port, name=b"", init=True, timeout=3):
+    def __init__(self, host, port, name=b"", open=False, timeout=3):
         self.host = host
         self.port = port
         self.name = name
         self.socket_timeout = timeout
 
-        if init:
+        self._socket = self._readinto = self._write = self.size = None
+
+        if open:
             self.open()
 
     def open(self):
@@ -76,6 +78,7 @@ class Client:
         self._socket = self._readinto = self._write = None
 
     def __enter__(self):
+        self.open()
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
@@ -99,9 +102,11 @@ class BlockClient:
 
     def ioctl(self, op, arg):
         if op == 1:
-            self.client.open()
+            if self.client._socket is None:
+                self.client.open()
         elif op == 2:
-            self.client.close()
+            if self.client._socket is not None:
+                self.client.close()
         if op == 4:
             return self.client.size // self.block_size
         elif op == 5:
@@ -110,5 +115,5 @@ class BlockClient:
             return 0
 
 
-def connect(host, port, block_size=512, name=b"", init=False):
-    return BlockClient(Client(host, port, name, init=init), block_size)
+def connect(host, port, block_size=512, name=b"", open=False):
+    return BlockClient(Client(host, port, name, open=open), block_size)
