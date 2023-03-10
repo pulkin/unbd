@@ -15,6 +15,7 @@ Network block device is a protocol to communicate block storage devices
 or files over the network.
 This package implements a client to the NBD suitable to run on
 network-enabled micropython devices such as `ESP8266` and `ESP32`.
+It is also compatible with regular cpython setups.
 
 How to use
 ----------
@@ -25,12 +26,18 @@ Install `nbd` on your Linux machine and start the server
 nbd-server 33567 /full/path/to/fs.img -d
 ```
 
-Install `unbd` on your micropython device and mount the remote device
+Install `unbd` on your micropython device
+
+```shell
+mpremote mip install github:pulkin/unbd
+```
+
+Mount the remote device
 
 ```python
 from unbd import connect
 import os
-os.mount(connect('192.168.0.123', 33567, open=True), "/mount_point")
+os.mount(connect('192.168.0.123', 33567, open=True), "/mount")
 ```
 
 `fs.img` located on the Linux machine contains FAT image.
