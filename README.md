@@ -38,15 +38,37 @@ os.mount(connect('192.168.0.123', 33567, open=True), "/mount_point")
 Performance
 -----------
 
-The mounted filesystem speeds range from several Kbps to tens
-of Kbps in read and write. The final throughput is roughly the
+The mounted filesystem speeds range from several Kbps up to
+100 Kbps in read and write. The final throughput is roughly the
 ratio `block_size / network_latency`. Thus, to achieve maximal
-performance make sure that `block_size` is large (4096 is a
-good value to maximize performance) and the connection is stable.
-Example `littlefs` mount looks like the following:
+performance:
+
+- increase `block_size` (4096 is about the maximum)
+- ensure the wireless connection is stable
+
+FAT filesystem is, in general, twice as fast as `littlefs` for
+reading large files.
+
+Examples
+--------
+
+Simply mount the partition with default values (micropython)
+
+```python
+from unbd import connect
+os.mount(connect(host, port, open=True), "/mount")
+```
+
+Mount `littlefs` with a large block size
 
 ```python
 os.mount(os.VfsLfs2(connect(host, port, block_size=4096), readsize=4096), "/mount")
+```
+
+Mount FAT with a large block size
+
+```python
+os.mount(os.VfsFat(connect(host, port, block_size=4096)), "/mount")
 ```
 
 License
