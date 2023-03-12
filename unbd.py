@@ -73,9 +73,11 @@ class Client:
         return result
 
     def close(self):
-        self._write(_rq_message(2, 0, 0))
-        self._socket.close()
-        self._socket = self._readinto = self._write = None
+        try:
+            self._write(_rq_message(2, 0, 0))
+        finally:
+            self._socket.close()
+            self._socket = self._readinto = self._write = None
 
     def __enter__(self):
         self.open()
@@ -105,8 +107,11 @@ class BlockClient:
             if self.client._socket is None:
                 self.client.open()
         elif op == 2:
-            if self.client._socket is not None:
-                self.client.close()
+            try:
+                if self.client._socket is not None:
+                    self.client.close()
+            except:
+                pass
         if op == 4:
             return self.client.size // self.block_size
         elif op == 5:
