@@ -4,6 +4,7 @@ from contextlib import contextmanager
 from tempfile import NamedTemporaryFile
 from time import sleep
 import os
+from pathlib import Path
 
 import pytest
 from conftest import nbd_server_cmd
@@ -12,13 +13,14 @@ from unbd import Client
 
 
 @contextmanager
-def nbd_server(port, data, delay=0.1):
-    with NamedTemporaryFile("wb+") as f:
+def nbd_server(port, data, delay=0.1, name=None):
+    with (NamedTemporaryFile("wb+") if name is None else open(name, "wb+")) as f:
         f.write(data)
         f.flush()
         f.seek(0)
         os.chmod(f.name, 0o666)  # in case nbd-server runs as a different user
-        p = subprocess.Popen([*nbd_server_cmd.split(), str(port), f.name, "-d"], stdout=sys.stdout, stderr=sys.stderr)
+        p = subprocess.Popen([*nbd_server_cmd.split(), str(port), str(Path(f.name).absolute()), "-d"],
+                             stdout=sys.stdout, stderr=sys.stderr)
         try:
             sleep(delay)
             yield p, f
