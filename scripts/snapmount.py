@@ -11,13 +11,14 @@ import socket
 from contextlib import closing, contextmanager
 from time import sleep
 import logging
+import serial.tools.list_ports
 
-from mpremote.pyboard import Pyboard
+from mpremote.pyboard import Pyboard, PyboardError
 
 import unbd
 
 
-def collect_path(src: str) -> (list[(bool, str)], int):
+def collect_path(src: str) -> (dict[str, bytes], int):
     """
     Collects paths in the specified location.
 
@@ -28,20 +29,21 @@ def collect_path(src: str) -> (list[(bool, str)], int):
 
     Returns
     -------
-    Pairs `(is_folder, name)` and the cumulative size
-    of all files collected.
+    A dictionary `{file_name: file_content}` and
+    the cumulative size of all files collected.
     """
     src = Path(src)
-    items = []
+    result = {}
     size = 0
     for item in src.glob("**/*"):
         item_ = str(item.relative_to(src))
         if item.is_dir():
-            items.append([True, item_])
+            result[item_] = None
         elif item.is_file():
-            items.append([False, item_])
+            with open(item, 'rb') as f:
+                result[item_] = f.read()
             size += item.stat().st_size
-    return items, size
+    return result, size
 
 
 def pipe(out: bytes, err: bytes, err_msg: str, silent=False):
@@ -82,10 +84,19 @@ def pretty_memory(num, suffix="B"):
     return f"{num:.1f} Yi{suffix}"
 
 
+def parse_size(s):
+    s = s.lower()
+    if s[-1] in "kmgt":
+        return int(float(s[:-1]) * (0x400 << ("kmgt".index(s[-1]) * 10)))
+    else:
+        return int(s)
+
+
 @contextmanager
-def mounted(src: str, block_size: int = 512, image_fn: str = None, fs: str = "lfs", ssid: str = None,
-            passphrase: str = None, nbd_server="nbd-server", endpoint="/mount", soft_reset: bool = True,
-            unmount: bool = True):
+def mounted(src: str, device: str = None, block_size: int = 512, size: int = None,
+            image_fn: str = None, fs: str = "lfs", ssid: str = None, passphrase: str = None,
+            nbd_server="nbd-server", endpoint="/mount", soft_reset: bool = True,
+            unmount: bool = True, baud_rate: int = 115200):
     """
     Mount and unmount a copy of the provided folder.
 
@@ -93,8 +104,12 @@ def mounted(src: str, block_size: int = 512, image_fn: str = None, fs: str = "lf
     ----------
     src
         Folder to mount.
+    device
+        The micropython device.
     block_size
         The size of the block.
+    size
+        Total image size.
     image_fn
         File name of the image composed.
     fs
@@ -111,11 +126,21 @@ def mounted(src: str, block_size: int = 512, image_fn: str = None, fs: str = "lf
         If True, soft-resets the board.
     unmount
         If True, unmounts automatically.
+    baud_rate
+        Baud rate for serial communications.
     """
-    copy_items, copy_size = collect_path(src)
-    logging.info(f"path {src} contains {len(copy_items)} items; total size {pretty_memory(copy_size)}")
-    estimated_size = (len(copy_items) + 1) * block_size + copy_size
+    if isinstance(src, str):
+        copy_items, copy_size = collect_path(src)
+        logging.info(f"path {src} contains {len(copy_items)} items; total size {pretty_memory(copy_size)}")
+    else:
+        copy_items = src
+        copy_size = sum(len(i) for i in copy_items.values() if i is not None)
+
+    estimated_size = 2 * (len(copy_items) + 1) * block_size + 1.5 * copy_size
     logging.info(f"  estimated image size {pretty_memory(estimated_size)}")
+    if size is not None and size > estimated_size:
+        estimated_size = size
+        logging.info(f"  requested a larger image size {pretty_memory(size)}")
 
     if image_fn is None:
         out_file = tempfile.NamedTemporaryFile("wb")
@@ -131,13 +156,6 @@ def mounted(src: str, block_size: int = 512, image_fn: str = None, fs: str = "lf
         block_count = estimated_size // block_size + 1
         logging.info(f"  args: {block_size=} {block_count=}")
         image = LittleFS(block_size=block_size, block_count=block_count)
-        for is_dir, name in copy_items:
-            if is_dir:
-                image.mkdir(name)
-            else:
-                with image.open(name, 'wb') as f_dst, open(Path(src) / name, 'rb') as f_src:
-                    f_dst.write(f_src.read())
-        out_file.write(image.context.buffer)
 
     elif fs == "fat":
         logging.info("using FAT")
@@ -154,20 +172,43 @@ def mounted(src: str, block_size: int = 512, image_fn: str = None, fs: str = "lf
 
         # copy
         image = PyFatFS(out_file.name)
-        for is_dir, name in copy_items:
-            if is_dir:
-                image.makedir(name)
-            else:
-                with image.open(name, 'wb') as f_dst, open(Path(src) / name, 'rb') as f_src:
-                    f_dst.write(f_src.read())
-        image.fs._mark_clean()
     else:
         raise ValueError(f"unknown {fs=}")
+
+    for name, content in copy_items.items():
+        if content is None:
+            image.makedir(name)
+        else:
+            with image.open(name, 'wb' if isinstance(content, bytes) else 'w') as f_dst:
+                f_dst.write(content)
+
+    if fs == "lfs":
+        out_file.write(image.context.buffer)
+    elif fs == "fat":
+        image.fs._mark_clean()
+
     out_file.flush()
 
     # communicate with the board
     logging.info("connecting to board and checking network capabilities")
-    board = Pyboard("/dev/ttyUSB0")
+    if device is None:
+        # copy-paste from mpremote
+        # Auto-detect and auto-connect to the first available device.
+        logging.info("no device specified")
+        for p in sorted(serial.tools.list_ports.comports()):
+            logging.info(f"trying {p.device}")
+            try:
+                board = Pyboard(p.device, baudrate=baud_rate)
+                logging.info("  success")
+                break
+            except PyboardError as er:
+                if not er.args[0].startswith("failed to access"):
+                    raise er
+        else:
+            raise PyboardError("no device found")
+    else:
+        board = Pyboard(device, baudrate=baud_rate)
+
     board.enter_raw_repl(soft_reset=soft_reset)
 
     try:
@@ -267,9 +308,11 @@ def mounted(src: str, block_size: int = 512, image_fn: str = None, fs: str = "lf
 if __name__ == "__main__":
     arg_parser = argparse.ArgumentParser(description="Mounts a folder on a micropython device")
     arg_parser.add_argument("src", help="source directory on the host", metavar="FOLDER")
-    arg_parser.add_argument("--image-fn", help="destination image file name", metavar="IMAGE", default=None)
+    arg_parser.add_argument("--device", help="target device")
+    arg_parser.add_argument("--image-fn", help="temporary image file name on the host", metavar="IMAGE", default=None)
     arg_parser.add_argument("--block-size", help="block size", metavar="SIZE", type=int,
                             default=512, choices=[0x200, 0x400, 0x800, 0x1000])
+    arg_parser.add_argument("--size", help="total image size", metavar="SIZE")
     arg_parser.add_argument("--fs", help="fs choice", metavar="FS", choices=["fat", "lfs"], default="lfs")
     arg_parser.add_argument("--ssid", help="SSID to connect to", default=None)
     arg_parser.add_argument("--passphrase", help="wifi network passphrase", default=None)
@@ -278,6 +321,7 @@ if __name__ == "__main__":
     arg_parser.add_argument("--endpoint", help="mount remote endpoint", metavar="PATH", default="/mount")
     arg_parser.add_argument("--soft-reset", help="soft-resets the board", action="store_true")
     arg_parser.add_argument("--payload", help="payload on the micropython device")
+    arg_parser.add_argument("--baud-rate", help="serial baud rate", metavar="N", type=int, default=115200)
     arg_parser.add_argument("--verbose", help="verbose printing", action="store_true")
     args = arg_parser.parse_args()
 
@@ -287,9 +331,11 @@ if __name__ == "__main__":
         level=logging.INFO if args.verbose else logging.ERROR
     )
 
-    with mounted(args.src, block_size=args.block_size, image_fn=args.image_fn, fs=args.fs, ssid=args.ssid,
-                 passphrase=args.passphrase, nbd_server=args.nbd_server, endpoint=args.endpoint,
-                 soft_reset=args.soft_reset, unmount=args.payload is not None) as board:
+    with mounted(args.src, device=args.device, block_size=args.block_size,
+                 size=None if args.size is None else parse_size(args.size),
+                 image_fn=args.image_fn, fs=args.fs, ssid=args.ssid, passphrase=args.passphrase,
+                 nbd_server=args.nbd_server, endpoint=args.endpoint, soft_reset=args.soft_reset,
+                 unmount=args.payload is not None, baud_rate=args.baud_rate) as board:
         if args.payload is None:
             while True:
                 sleep(10_000)

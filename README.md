@@ -42,6 +42,31 @@ os.mount(connect('192.168.0.123', 33567, open=True), "/mount")
 
 `fs.img` located on the Linux machine contains FAT image.
 
+Command-line tools
+------------------
+
+### `snapmount.py`
+
+For host machines, this package includes `snapmount.py` script
+which builds an image of a local folder and mounts it on your
+micropython device using `unbd`.
+The primary purpose of `snapmount.py` is to streamline the
+development of large many-file applications for micropython and
+to eliminate the need of using flash memory when deploying test
+builds.
+
+Key features:
+- mounts an image of a folder with a single command
+- integrates with tests: mount, run and unmount
+- faster than `mpremote mount`
+- no micropython setup needed (provided enough RAM)
+- tiny footprint
+
+Example
+```bash
+snapmount.py src --verbose --payload="print(os.listdir('/mount'))" --block-size=4096 --size=4m
+```
+
 Performance
 -----------
 
@@ -50,7 +75,7 @@ The mounted filesystem speeds range from several Kbps up to
 ratio `block_size / network_latency`. Thus, to achieve maximal
 performance:
 
-- increase `block_size` (4096 is about the maximum)
+- increase `block_size` (4096 is about the saturated maximum)
 - ensure the wireless connection is stable
 
 FAT filesystem is, in general, twice as fast as `littlefs` for
