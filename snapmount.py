@@ -305,7 +305,7 @@ def mounted(src: str, device: str = None, block_size: int = 512, size: int = Non
             board.close()
 
 
-if __name__ == "__main__":
+def main():
     arg_parser = argparse.ArgumentParser(description="Mounts a folder on a micropython device")
     arg_parser.add_argument("src", help="source directory on the host", metavar="FOLDER")
     arg_parser.add_argument("--device", help="target device")
@@ -341,3 +341,7 @@ if __name__ == "__main__":
                 sleep(10_000)
         else:
             pipe(*board.exec_raw(args.payload), "payload error")
+
+
+if __name__ == "__main__":
+    main()

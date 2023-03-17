@@ -1,3 +1,5 @@
 pytest
 mpremote
 pyfatfs
+littlefs-python
+build

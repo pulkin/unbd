@@ -2,7 +2,7 @@ from inspect import getsource
 from textwrap import dedent
 import socket
 import sys
-from scripts.snapmount import mounted
+from snapmount import mounted
 import pytest
 
 
