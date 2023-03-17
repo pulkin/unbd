@@ -1,3 +1,4 @@
+import os
 from inspect import getsource
 from textwrap import dedent
 import socket
@@ -69,6 +70,22 @@ def test_mount_fat_rw():
         f.write("Hello world")
     with open("/mount/hello.txt", 'r') as f:
         assert f.read() == "Hello world"
+
+
+@runs_on_metal({"/some/folder/hello.txt": "Hello world", "/another/folder": None}, fs="lfs")
+def test_mount_littlefs_subfolders():
+    with open("/mount/some/folder/hello.txt", 'r') as f:
+        assert f.read() == "Hello world"
+    assert sorted(os.listdir("/mount")) == ["another", "some"]
+    assert os.listdir("/mount/another") == ["folder"]
+
+
+@runs_on_metal({"/some/folder/hello.txt": "Hello world", "/another/folder": None}, fs="fat")
+def test_mount_fat_subfolders():
+    with open("/mount/some/folder/hello.txt", 'r') as f:
+        assert f.read() == "Hello world"
+    assert sorted(os.listdir("/mount")) == ["another", "some"]
+    assert os.listdir("/mount/another") == ["folder"]
 
 
 @runs_on_metal({"test.txt": b"abcdefgh" * 12800}, block_size=512, fs="fat")

@@ -46,6 +46,17 @@ def collect_path(src: str) -> (dict[str, bytes], int):
     return result, size
 
 
+def expand_path_items(src: dict) -> dict[str, str]:
+    result = {}
+    for path, content in src.items():
+        for i in Path(path).parents[::-1]:
+            i = str(i)
+            if i != "/" and i != "." and i not in result:
+                result[i] = None
+        result[path] = content
+    return result
+
+
 def pipe(out: bytes, err: bytes, err_msg: str, silent=False):
     """
     Pipes output and err to stdout and stderr.
@@ -133,7 +144,7 @@ def mounted(src: str, device: str = None, block_size: int = 512, size: int = Non
         copy_items, copy_size = collect_path(src)
         logging.info(f"path {src} contains {len(copy_items)} items; total size {pretty_memory(copy_size)}")
     else:
-        copy_items = src
+        copy_items = expand_path_items(src)
         copy_size = sum(len(i) for i in copy_items.values() if i is not None)
 
     estimated_size = 2 * (len(copy_items) + 1) * block_size + 1.5 * copy_size
@@ -156,6 +167,7 @@ def mounted(src: str, device: str = None, block_size: int = 512, size: int = Non
         block_count = estimated_size // block_size + 1
         logging.info(f"  args: {block_size=} {block_count=}")
         image = LittleFS(block_size=block_size, block_count=block_count)
+        image.makedir = image.makedirs
 
     elif fs == "fat":
         logging.info("using FAT")
