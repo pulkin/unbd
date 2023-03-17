@@ -81,7 +81,7 @@ Then, use `snapmount` script or the `unbd` module directly.
 Key features
 ------------
 
-- (relatively) high performance, look below
+- (relatively) high performance, see below
 - tiny footprint
 - `snapmount` mounts an image of a folder with a single command
 - `snapmount` integrates with tests: mount-run-unmount
@@ -104,6 +104,8 @@ reading large files.
 Examples
 --------
 
+### `unbd`
+
 Simply mount the partition with default values (micropython)
 
 ```python
@@ -121,6 +123,17 @@ Mount FAT with a large block size
 
 ```python
 os.mount(os.VfsFat(connect(host, port, block_size=4096)), "/mount")
+```
+
+### Develop and test with `snapmount`
+
+See [bare-metal tests for this package](test/test_mp_esp32.py).
+
+```python
+from snapmount import mounted
+
+with mounted('python-sources', endpoint="/", **kwargs) as board:
+    board.exec_raw("import something")
 ```
 
 License
