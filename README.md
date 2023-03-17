@@ -4,68 +4,88 @@
 unbd
 ====
 
-uNBD - micro implementation of
+`unbd` - micro implementation of
 [network block device](https://en.wikipedia.org/wiki/Network_block_device)
 in python.
 
 What for?
 ---------
 
-Network block device is a protocol to communicate block storage devices
-or files over the network.
-This package implements a client to the NBD suitable to run on
-network-enabled micropython devices such as `ESP8266` and `ESP32`.
-It is also compatible with regular cpython setups.
+Use this package for mounting folders on wifi-enabled micropython
+devices such as `ESP8266` and `ESP32`.
 
-How to use
-----------
+Install
+-------
 
-Install `nbd` on your Linux machine and start the server
-
-```shell
-nbd-server 33567 /full/path/to/fs.img -d
-```
-
-Install `unbd` on your micropython device
+For micropython device use `mpremote`
 
 ```shell
 mpremote mip install github:pulkin/unbd
 ```
 
-Mount the remote device
+For host machines use `pip`
 
-```python
-from unbd import connect
-import os
-os.mount(connect('192.168.0.123', 33567, open=True), "/mount")
+```shell
+pip install git+https://github.com/pulkin/unbd
 ```
 
-`fs.img` located on the Linux machine contains FAT image.
+How to use
+----------
 
-Command-line tools
-------------------
+First, install `nbd` server on your host computer.
+Then, use `snapmount` script or the `unbd` module directly.
 
-### `snapmount.py`
+- using `snapmount`
 
-For host machines, this package includes `snapmount.py` script
-which builds an image of a local folder and mounts it on your
-micropython device using `unbd`.
-The primary purpose of `snapmount.py` is to streamline the
-development of large many-file applications for micropython and
-to eliminate the need of using flash memory when deploying test
-builds.
+  1. Install cpython package on your host computer
+     ```bash
+     pip install git+https://github.com/pulkin/unbd
+     ```
+  2. Connect your wifi-enabled micropython device to a serial port
+     on your host computer
+  3. Mount with
+     ```bash
+     snapmount local-folder-to-mount --verbose
+     ```
 
-Key features:
-- mounts an image of a folder with a single command
-- integrates with tests: mount, run and unmount
-- faster than `mpremote mount`
-- no micropython setup needed (provided enough RAM)
+  Note that `snapmount` uses wifi to communicate host your
+  micropython device in station mode with the host computer.
+  It will attempt to deduce network credentials through
+  Network Manager on Linux (`nmcli`). You may explicitly supply
+  credentials through `--ssid` and `--passphrase`.
+
+- manually
+
+  1. Start NBD server on the host machine
+    
+     ```shell
+     nbd-server 33567 /full/path/to/fs.img -d
+     ```
+    
+  2. Connect and install `unbd` on your micropython device
+    
+     ```shell
+     mpremote mip install github:pulkin/unbd
+     ```
+    
+  3. Mount the remote device
+    
+     ```python
+     from unbd import connect
+     import os
+     os.mount(connect('host-ip-address', 33567, open=True), "/mount")
+     ```
+
+  Note that `fs.img` located on the host machine contains FAT image.
+
+Key features
+------------
+
+- (relatively) high performance, look below
 - tiny footprint
-
-Example
-```bash
-snapmount.py src --verbose --payload="print(os.listdir('/mount'))" --block-size=4096 --size=4m
-```
+- `snapmount` mounts an image of a folder with a single command
+- `snapmount` integrates with tests: mount-run-unmount
+- minimal setup needed
 
 Performance
 -----------
