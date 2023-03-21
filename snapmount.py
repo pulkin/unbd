@@ -43,6 +43,8 @@ def collect_path(src: str) -> (dict[str, bytes], int):
             with open(item, 'rb') as f:
                 result[item_] = f.read()
             size += item.stat().st_size
+    if len(result) == 0:
+        raise ValueError(f"not a directory: {src}")
     return result, size
 
 
