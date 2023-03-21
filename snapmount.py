@@ -355,7 +355,11 @@ def main():
             while True:
                 sleep(10_000)
         else:
-            pipe(*board.exec_raw(args.payload,data_consumer=lambda d: sys.stdout.write(d.decode())), "payload error", silent=True)
+            pipe(*board.exec_raw(
+                args.payload,
+                data_consumer=lambda d: sys.stdout.write(d.decode()),
+                timeout=None,
+            ), "payload error", silent=True)
 
 
 if __name__ == "__main__":
