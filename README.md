@@ -4,7 +4,7 @@
 unbd
 ====
 
-`unbd` - micro implementation of
+`unbd` - micro implementation of a
 [network block device](https://en.wikipedia.org/wiki/Network_block_device)
 in python.
 
@@ -17,13 +17,15 @@ devices such as `ESP8266` and `ESP32`.
 Install
 -------
 
-For micropython device use `mpremote`
+If you want to use `unbd` directly install it on
+your micropython device through `mpremote`
 
 ```shell
 mpremote mip install github:pulkin/unbd
 ```
 
-For host machines use `pip`
+To use `unbd` with cpython and/or in command-line
+environment use `pip`
 
 ```shell
 pip install git+https://github.com/pulkin/unbd
@@ -32,8 +34,10 @@ pip install git+https://github.com/pulkin/unbd
 How to use
 ----------
 
-First, install `nbd` server on your host computer.
-Then, use `snapmount` script or the `unbd` module directly.
+First, install `nbd` server on your host computer: it will
+serve file system images over your local network.
+Then, use the `snapmount` script on the host or the `unbd`
+module on the micropython device directly.
 
 - using `snapmount`
 
@@ -43,9 +47,9 @@ Then, use `snapmount` script or the `unbd` module directly.
      ```
   2. Connect your wifi-enabled micropython device to a serial port
      on your host computer
-  3. Mount with
+  3. Mount your source folder `src` with
      ```bash
-     snapmount local-folder-to-mount --verbose
+     snapmount src
      ```
 
   Note that `snapmount` uses wifi to communicate host your
@@ -81,11 +85,12 @@ Then, use `snapmount` script or the `unbd` module directly.
 Key features
 ------------
 
-- (relatively) high performance, see below
-- tiny footprint
-- `snapmount` mounts an image of a folder with a single command
-- `snapmount` integrates with tests: mount-run-unmount
+- fully virtual file system over wifi
+- relatively high performance
 - minimal setup needed
+- tiny footprint
+- no flash storage used (and no performance degradation
+  for intensive IO)
 
 Performance
 -----------
@@ -100,6 +105,12 @@ performance:
 
 FAT filesystem is, in general, twice as fast as `littlefs` for
 reading large files.
+
+### Real-world benchmarks
+
+| Case                              | LittleFS 512 | FAT 512 | FAT 4096 |
+|-----------------------------------|--------------|---------|----------|
+| App: ~100Kb, tens of source files | 33s          | 12s     | 9s       | 
 
 Examples
 --------
@@ -127,13 +138,35 @@ os.mount(os.VfsFat(connect(host, port, block_size=4096)), "/mount")
 
 ### Develop and test with `snapmount`
 
-See [bare-metal tests for this package](test/test_mp_esp32.py).
+See also [bare-metal tests for this package](test/test_mp_esp32.py).
+
+Running a test script `test.py` from `src`
 
 ```python
 from snapmount import mounted
 
-with mounted('python-sources', endpoint="/", **kwargs) as board:
-    board.exec_raw("import something")
+with mounted('src', endpoint="/", **kwargs) as board:
+    out, err = board.exec_raw("import test")
+    assert len(err) == 0
+```
+
+Same with `snapmount` in command line
+
+```bash
+snapmount src --ssid="ssid" --passphrase="secret" --endpoint=/ --payload="import test"
+```
+
+More options
+
+```bash
+snapmount src --verbose \
+  --ssid="ssid" \
+  --passphrase="secret" \
+  --soft-reset \ 
+  --endpoint=/ \
+  --fs=fat \
+  --block-size=4096 \
+  --payload="import test"
 ```
 
 License
