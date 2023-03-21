@@ -74,8 +74,9 @@ def pipe(out: bytes, err: bytes, err_msg: str, silent=False):
     silent
         If True, does not output stdout if no stderr avail.
     """
-    if not silent or len(err):
+    if not silent:
         sys.stdout.write(out.decode())
+    if len(err):
         sys.stderr.write(err.decode())
     if len(err) and err_msg is not None:
         raise RuntimeError(f"MCU error: {err_msg}")
@@ -354,7 +355,7 @@ def main():
             while True:
                 sleep(10_000)
         else:
-            pipe(*board.exec_raw(args.payload), "payload error")
+            pipe(*board.exec_raw(args.payload, data_consumer=sys.stdout.write), "payload error", silent=True)
 
 
 if __name__ == "__main__":
