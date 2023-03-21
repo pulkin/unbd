@@ -258,6 +258,8 @@ def mounted(src: str, device: str = None, block_size: int = 512, size: int = Non
 
                 WLAN(AP_IF).active(False)
                 nic = WLAN(STA_IF)
+                nic.active(False)
+                sleep_ms(tick)
                 nic.active(True)
                 nic.disconnect()
                 nic.connect(wlan_login, wlan_pass)
